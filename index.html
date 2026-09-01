@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generador de retos · Bioestadística</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --papel:#FBFAF6; --tinta:#16202B; --suave:#5C6B78; --linea:#DCDDD6;
+  --rojo:#B4232B; --verde:#2F6F4F; --caja:#FFFFFF;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--papel); color:var(--tinta);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+header{padding:34px 28px 20px;border-bottom:1px solid var(--linea)}
+h1{font:600 27px/1.15 Georgia,"Times New Roman",serif;margin:0 0 6px}
+header p{margin:0;color:var(--suave);max-width:62ch}
+main{display:grid;grid-template-columns:390px 1fr;gap:0;align-items:start}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.panel{padding:24px 28px;border-right:1px solid var(--linea)}
+@media(max-width:900px){.panel{border-right:0;border-bottom:1px solid var(--linea)}}
+.salida{padding:24px 28px;min-width:0}
+fieldset{border:0;padding:0;margin:0 0 22px}
+legend{font:600 12px/1 inherit;letter-spacing:.06em;color:var(--suave);margin-bottom:10px;padding:0}
+label{display:block;margin-bottom:5px;font-weight:500}
+select,input[type=text],input[type=number]{
+  width:100%;padding:9px 10px;border:1px solid var(--linea);border-radius:5px;
+  background:var(--caja);color:inherit;font:inherit
+}
+select:focus,input:focus,button:focus{outline:2px solid var(--rojo);outline-offset:1px}
+.fila{display:flex;gap:12px;margin-bottom:14px}
+.fila>div{flex:1;min-width:0}
+.check{display:flex;gap:9px;align-items:flex-start;margin-bottom:9px;font-weight:400}
+.check input{margin:3px 0 0}
+.check span small{display:block;color:var(--suave);font-size:12.5px;line-height:1.35}
+button{
+  font:inherit;font-weight:600;padding:11px 18px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--tinta);background:var(--tinta);color:#fff
+}
+button.sec{background:transparent;color:var(--tinta)}
+button[disabled]{opacity:.45;cursor:default}
+.acciones{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.aviso{border-left:3px solid var(--rojo);padding:9px 0 9px 12px;margin:14px 0;color:var(--suave);font-size:13.5px}
+.barra{height:6px;background:var(--linea);border-radius:3px;overflow:hidden;margin:16px 0 8px;display:none}
+.barra div{height:100%;background:var(--rojo);width:0;transition:width .2s}
+#estado{font-size:13.5px;color:var(--suave);min-height:20px}
+canvas#previa{max-width:100%;border:1px solid var(--linea);background:#fff;display:block}
+table{border-collapse:collapse;width:100%;font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:8px}
+th,td{border-bottom:1px solid var(--linea);padding:5px 7px;text-align:left}
+th{font-weight:600;color:var(--suave)}
+h2{font:600 15px/1.2 inherit;margin:26px 0 8px}
+.vacio{color:var(--suave);border:1px dashed var(--linea);border-radius:6px;padding:40px 20px;text-align:center}
+footer{padding:18px 28px;border-top:1px solid var(--linea);color:var(--suave);font-size:13px}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:#F0EFE9;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Generador de retos</h1>
+  <p>Elige un reto y cuántos exámenes necesitas. Cada examen sale en una hoja A4 apaisada con las diez preguntas, sorteando una variación distinta de cada una.</p>
+</header>
+
+<main>
+<section class="panel">
+  <fieldset>
+    <legend>Examen</legend>
+    <label for="reto">Reto</label>
+    <select id="reto"></select>
+    <p id="infoReto" style="color:var(--suave);font-size:13px;margin:6px 0 14px"></p>
+    <div class="fila">
+      <div><label for="n">Nº de exámenes</label><input type="number" id="n" value="5" min="1" max="60"></div>
+      <div><label for="semilla">Semilla</label><input type="text" id="semilla" value="2026"></div>
+    </div>
+    <label for="titulo">Encabezado</label>
+    <input type="text" id="titulo" placeholder="Bioestadística · Grado en…" value="Bioestadística">
+  </fieldset>
+
+  <fieldset>
+    <legend>Hoja</legend>
+    <div class="fila">
+      <div><label for="formato">Formato</label>
+        <select id="formato">
+          <option value="a4">A4 apaisado</option>
+          <option value="a3">A3 apaisado</option>
+          <option value="a4v">A4 vertical</option>
+        </select></div>
+      <div><label for="dpi">Resolución</label>
+        <select id="dpi"><option value="150">150 ppp</option><option value="200" selected>200 ppp</option><option value="300">300 ppp</option></select></div>
+    </div>
+    <label class="check"><input type="checkbox" id="recortar" checked><span>Recortar el fondo decorativo<small>Deja sólo la tarjeta de código: el texto sale hasta un 35 % más grande.</small></span></label>
+    <label class="check"><input type="checkbox" id="tinta" checked><span>Modo ahorro de tinta<small>Invierte la luminosidad: fondo blanco y código oscuro, conservando los colores.</small></span></label>
+    <label class="check"><input type="checkbox" id="extras" checked><span>Incluir gráficos y opciones<small>Sólo en los retos que los tienen; se montan bajo el enunciado.</small></span></label>
+    <label class="check"><input type="checkbox" id="norep" checked><span>No repetir variaciones entre exámenes</span></label>
+    <label class="check"><input type="checkbox" id="clave"><span>Imprimir la clave en la hoja</span></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Origen de las imágenes</legend>
+    <input type="text" id="base" value="https://raw.githubusercontent.com/ia4legos/Statistics/main/">
+    <p style="color:var(--suave);font-size:12.5px;margin:6px 0 0">Si publicas la app dentro del propio repositorio, cámbialo por <code>./</code></p>
+  </fieldset>
+
+  <div class="acciones">
+    <button id="generar">Generar exámenes</button>
+    <button id="previsualizar" class="sec">Ver una hoja</button>
+  </div>
+  <div class="barra" id="barra"><div></div></div>
+  <p id="estado"></p>
+  <p class="aviso" id="peso"></p>
+</section>
+
+<section class="salida">
+  <div id="lienzoBox"><div class="vacio" id="vacio">La previsualización de la primera hoja aparecerá aquí.</div></div>
+  <canvas id="previa" hidden></canvas>
+  <div id="claveBox"></div>
+</section>
+</main>
+
+<footer>Las imágenes se descargan de <span id="repoNombre"></span>. Nada sale del navegador: el PDF se compone en tu equipo.</footer>
+
+<script>
+/* ------------------------------------------------------------------ *
+ *  Inventario del repositorio (generado a partir del árbol de ficheros)
+ * ------------------------------------------------------------------ */
+const MANIFEST = {"repo":"ia4legos/Statistics","rama":"main","retos":{"RETO_EXPERTO_10_20_30_2":{"layout":"A","root":"","prefix":"RETO_EXPERTO_10_20_30_2","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":false},"3":{"n":100,"graf":false,"ngraf":0,"py":false},"4":{"n":100,"graf":false,"ngraf":0,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":false},"6":{"n":100,"graf":false,"ngraf":0,"py":false},"7":{"n":100,"graf":false,"ngraf":0,"py":false},"8":{"n":100,"graf":false,"ngraf":0,"py":false},"9":{"n":100,"graf":false,"ngraf":0,"py":false},"10":{"n":100,"graf":false,"ngraf":0,"py":false}},"enunciados":[]},"RETO_EXPERTO_10_20_30_3":{"layout":"B1","root":"RETO_EXPERTO_10_20_30_3","prefix":"RETO_EXPERTO_10_20_30_3","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":false},"3":{"n":100,"graf":false,"ngraf":0,"py":false},"4":{"n":100,"graf":false,"ngraf":0,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":false},"6":{"n":100,"graf":false,"ngraf":0,"py":false},"7":{"n":100,"graf":false,"ngraf":0,"py":false},"8":{"n":100,"graf":false,"ngraf":0,"py":false},"9":{"n":100,"graf":false,"ngraf":0,"py":false},"10":{"n":100,"graf":false,"ngraf":0,"py":false}},"enunciados":[]},"RETO_EXPERTO_10_20_30":{"layout":"A","root":"","prefix":"RETO_EXPERTO_10_20_30","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":false},"3":{"n":100,"graf":false,"ngraf":0,"py":false},"4":{"n":100,"graf":false,"ngraf":0,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":false},"6":{"n":100,"graf":false,"ngraf":0,"py":false},"7":{"n":100,"graf":false,"ngraf":0,"py":false},"8":{"n":100,"graf":false,"ngraf":0,"py":false},"9":{"n":100,"graf":false,"ngraf":0,"py":false},"10":{"n":100,"graf":false,"ngraf":0,"py":false}},"enunciados":[]},"RETO_EXPERTO_110_120_130":{"layout":"A","root":"","prefix":"RETO_EXPERTO_110_120_130","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":false},"3":{"n":100,"graf":false,"ngraf":0,"py":false},"4":{"n":100,"graf":false,"ngraf":0,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":false},"6":{"n":100,"graf":false,"ngraf":0,"py":false},"7":{"n":100,"graf":false,"ngraf":0,"py":false},"8":{"n":100,"graf":false,"ngraf":0,"py":false},"9":{"n":100,"graf":false,"ngraf":0,"py":false},"10":{"n":100,"graf":false,"ngraf":0,"py":false}},"enunciados":[]},"RETO_EXPERTO_140_150":{"layout":"A","root":"","prefix":"RETO_EXPERTO_140_150","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":false},"3":{"n":100,"graf":false,"ngraf":0,"py":false},"4":{"n":100,"graf":false,"ngraf":0,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":false},"6":{"n":100,"graf":false,"ngraf":0,"py":false},"7":{"n":100,"graf":false,"ngraf":0,"py":false},"8":{"n":100,"graf":false,"ngraf":0,"py":false},"9":{"n":100,"graf":false,"ngraf":0,"py":false},"10":{"n":100,"graf":false,"ngraf":0,"py":false}},"enunciados":[]},"RETO_EXPERTO_160_170_180":{"layout":"B2","root":"RETO_EXPERTO_160_170_180","prefix":"RETO_EXPERTO_160_170_180","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":true},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":false,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":0,"py":true},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":0,"py":true},"7":{"n":100,"graf":false,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":0,"py":true},"10":{"n":100,"graf":false,"ngraf":0,"py":true}},"enunciados":["enunciado_csv.json","enunciado_excel.json"]},"RETO_EXPERTO_190_200_210":{"layout":"B2","root":"RETO_EXPERTO_190_200_210","prefix":"RETO_EXPERTO_190_200_210","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":true},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":false,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":0,"py":true},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":0,"py":true},"7":{"n":100,"graf":false,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":0,"py":true},"10":{"n":100,"graf":false,"ngraf":0,"py":true}},"enunciados":["enunciado_csv.json","enunciado_excel.json"]},"RETO_EXPERTO_220_230_240":{"layout":"B2","root":"RETO_EXPERTO_220_230_240","prefix":"RETO_EXPERTO_220_230_240","preguntas":{"1":{"n":100,"graf":false,"ngraf":4,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":true,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":4,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":4,"py":false},"7":{"n":100,"graf":true,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":4,"py":false},"10":{"n":100,"graf":true,"ngraf":0,"py":true}},"enunciados":["enunciado_csv.json","enunciado_excel.json"]},"RETO_EXPERTO_250_260_270_280":{"layout":"B2","root":"RETO_EXPERTO_250_260_270_280","prefix":"RETO_EXPERTO_250_260_270_280","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":true},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":false,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":0,"py":true},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":0,"py":true},"7":{"n":100,"graf":false,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":0,"py":true},"10":{"n":100,"graf":false,"ngraf":0,"py":true}},"enunciados":[]},"RETO_EXPERTO_290_300_310_320":{"layout":"B2","root":"RETO_EXPERTO_290_300_310_320","prefix":"RETO_EXPERTO_290_300_310_320","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":true},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":false,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":0,"py":true},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":0,"py":true},"7":{"n":100,"graf":false,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":0,"py":true},"10":{"n":100,"graf":true,"ngraf":0,"py":true}},"enunciados":[]},"RETO_EXPERTO_330_340_350":{"layout":"B2","root":"RETO_EXPERTO_330_340_350","prefix":"RETO_EXPERTO_330_340_350","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":true},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":false,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":0,"py":true},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":0,"py":true},"7":{"n":100,"graf":false,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":0,"py":true},"10":{"n":100,"graf":false,"ngraf":0,"py":true}},"enunciados":["enunciado_csv.json","enunciado_excel.json"]},"RETO_EXPERTO_360_370_380":{"layout":"B2","root":"RETO_EXPERTO_360_370_380","prefix":"RETO_EXPERTO_360_370_380","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":true},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":false,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":0,"py":true},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":0,"py":true},"7":{"n":100,"graf":false,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":0,"py":true},"10":{"n":100,"graf":false,"ngraf":0,"py":true}},"enunciados":["enunciado_csv.json","enunciado_excel.json"]},"RETO_EXPERTO_390_400_410_420":{"layout":"B2","root":"RETO_EXPERTO_390_400_410_420","prefix":"RETO_EXPERTO_390_400_410_420","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":true},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":false,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":0,"py":true},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":0,"py":true},"7":{"n":100,"graf":false,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":0,"py":true},"10":{"n":100,"graf":false,"ngraf":0,"py":true}},"enunciados":["enunciado_csv.json","enunciado_excel.json"]},"RETO_EXPERTO_40_50_60_2":{"layout":"B1","root":"RETO_EXPERTO_40_50_60_2","prefix":"RETO_EXPERTO_40_50_60_2","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":false},"3":{"n":100,"graf":false,"ngraf":0,"py":false},"4":{"n":100,"graf":false,"ngraf":0,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":false},"6":{"n":100,"graf":false,"ngraf":0,"py":false},"7":{"n":100,"graf":false,"ngraf":0,"py":false},"8":{"n":100,"graf":false,"ngraf":0,"py":false},"9":{"n":100,"graf":false,"ngraf":0,"py":false},"10":{"n":100,"graf":false,"ngraf":0,"py":false}},"enunciados":[]},"RETO_EXPERTO_40_50_60":{"layout":"A","root":"","prefix":"RETO_EXPERTO_40_50_60","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":false},"3":{"n":100,"graf":false,"ngraf":0,"py":false},"4":{"n":100,"graf":false,"ngraf":0,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":false},"6":{"n":100,"graf":false,"ngraf":0,"py":false},"7":{"n":100,"graf":false,"ngraf":0,"py":false},"8":{"n":100,"graf":false,"ngraf":0,"py":false},"9":{"n":100,"graf":false,"ngraf":0,"py":false},"10":{"n":100,"graf":false,"ngraf":0,"py":false}},"enunciados":[]},"RETO_EXPERTO_430_440_450":{"layout":"B2","root":"RETO_EXPERTO_430_440_450","prefix":"RETO_EXPERTO_430_440_450","preguntas":{"1":{"n":100,"graf":true,"ngraf":0,"py":true},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":false,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":0,"py":true},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":0,"py":true},"7":{"n":100,"graf":false,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":0,"py":true},"10":{"n":100,"graf":false,"ngraf":0,"py":true}},"enunciados":["enunciado_csv.json","enunciado_excel.json"]},"RETO_EXPERTO_70_80_90_100":{"layout":"A","root":"","prefix":"RETO_EXPERTO_70_80_90_100","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":false},"3":{"n":100,"graf":false,"ngraf":0,"py":false},"4":{"n":100,"graf":false,"ngraf":0,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":false},"6":{"n":100,"graf":false,"ngraf":0,"py":false},"7":{"n":100,"graf":false,"ngraf":0,"py":false},"8":{"n":100,"graf":false,"ngraf":0,"py":false},"9":{"n":100,"graf":false,"ngraf":0,"py":false},"10":{"n":100,"graf":false,"ngraf":0,"py":false}},"enunciados":[]},"RETO_PRACTICA_3 ":{"layout":"B2","root":"RETO_PRACTICA_3 ","prefix":"RETO_PRACTICA_3","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":false},"2":{"n":100,"graf":false,"ngraf":0,"py":false},"3":{"n":100,"graf":false,"ngraf":0,"py":false},"4":{"n":100,"graf":false,"ngraf":0,"py":false},"5":{"n":100,"graf":false,"ngraf":0,"py":false},"6":{"n":100,"graf":false,"ngraf":0,"py":false},"7":{"n":100,"graf":false,"ngraf":0,"py":false},"8":{"n":100,"graf":false,"ngraf":0,"py":false},"9":{"n":100,"graf":false,"ngraf":0,"py":false},"10":{"n":100,"graf":false,"ngraf":0,"py":false}},"enunciados":[]},"RETO_UNIDAD_2":{"layout":"B2","root":"RETO_UNIDAD_2","prefix":"RETO_UNIDAD_2","preguntas":{"1":{"n":100,"graf":false,"ngraf":0,"py":true},"2":{"n":100,"graf":false,"ngraf":0,"py":true},"3":{"n":100,"graf":false,"ngraf":0,"py":true},"4":{"n":100,"graf":false,"ngraf":0,"py":true},"5":{"n":100,"graf":false,"ngraf":0,"py":true},"6":{"n":100,"graf":false,"ngraf":0,"py":true},"7":{"n":100,"graf":false,"ngraf":0,"py":true},"8":{"n":100,"graf":false,"ngraf":0,"py":true},"9":{"n":100,"graf":false,"ngraf":0,"py":true},"10":{"n":100,"graf":false,"ngraf":0,"py":true}},"enunciados":[]},"RETO_UNIDAD_3":{"layout":"B2","root":"RETO_UNIDAD_3","prefix":"RETO_UNIDAD_3","preguntas":{"1":{"n":200,"graf":false,"ngraf":0,"py":true},"2":{"n":200,"graf":false,"ngraf":0,"py":true},"3":{"n":200,"graf":false,"ngraf":0,"py":true},"4":{"n":200,"graf":false,"ngraf":0,"py":true},"5":{"n":200,"graf":false,"ngraf":0,"py":true},"6":{"n":200,"graf":false,"ngraf":0,"py":true},"7":{"n":200,"graf":false,"ngraf":0,"py":true},"8":{"n":200,"graf":false,"ngraf":0,"py":true},"9":{"n":200,"graf":false,"ngraf":0,"py":true},"10":{"n":200,"graf":false,"ngraf":0,"py":true}},"enunciados":[]},"RETO_UNIDAD_4":{"layout":"B2","root":"RETO_UNIDAD_4","prefix":"RETO_UNIDAD_4","preguntas":{"1":{"n":200,"graf":false,"ngraf":0,"py":true},"2":{"n":200,"graf":false,"ngraf":0,"py":true},"3":{"n":200,"graf":false,"ngraf":0,"py":true},"4":{"n":200,"graf":false,"ngraf":0,"py":true},"5":{"n":200,"graf":false,"ngraf":0,"py":true},"6":{"n":200,"graf":false,"ngraf":0,"py":true},"7":{"n":200,"graf":false,"ngraf":0,"py":true},"8":{"n":200,"graf":false,"ngraf":0,"py":true},"9":{"n":200,"graf":false,"ngraf":0,"py":true},"10":{"n":200,"graf":false,"ngraf":0,"py":true}},"enunciados":[]},"RETO_UNIDAD_5":{"layout":"B2","root":"RETO_UNIDAD_5","prefix":"RETO_UNIDAD_5","preguntas":{"1":{"n":200,"graf":false,"ngraf":0,"py":true},"2":{"n":200,"graf":false,"ngraf":0,"py":true},"3":{"n":200,"graf":false,"ngraf":0,"py":true},"4":{"n":200,"graf":false,"ngraf":0,"py":true},"5":{"n":200,"graf":false,"ngraf":0,"py":true},"6":{"n":200,"graf":false,"ngraf":0,"py":true},"7":{"n":200,"graf":false,"ngraf":0,"py":true},"8":{"n":200,"graf":false,"ngraf":0,"py":true},"9":{"n":200,"graf":false,"ngraf":0,"py":true},"10":{"n":200,"graf":false,"ngraf":0,"py":true}},"enunciados":[]}}};
+
+const $ = s => document.querySelector(s);
+const retos = MANIFEST.retos;
+const nombres = Object.keys(retos).sort();
+$('#repoNombre').textContent = MANIFEST.repo;
+
+/* ---------- interfaz ---------- */
+const sel = $('#reto');
+nombres.forEach(n => {
+  const o = document.createElement('option');
+  o.value = n; o.textContent = n.trim().replace(/_/g, ' ');
+  sel.appendChild(o);
+});
+sel.value = 'RETO_EXPERTO_10_20_30_2';
+sel.addEventListener('change', pintarInfo);
+['n','extras','dpi'].forEach(id => $('#'+id).addEventListener('change', pintarInfo));
+
+function pintarInfo() {
+  const r = retos[sel.value];
+  const qs = Object.values(r.preguntas);
+  const nv = Math.min(...qs.map(q => q.n));
+  const conGraf = Object.entries(r.preguntas).filter(([, q]) => q.graf || q.ngraf).map(([k]) => k);
+  const conOpc = Object.entries(r.preguntas).filter(([, q]) => q.py).map(([k]) => k);
+  let t = `${qs.length} preguntas · ${nv} variaciones de cada una`;
+  if (conGraf.length) t += ` · gráfico en las preguntas ${conGraf.join(', ')}`;
+  if (conOpc.length) t += ` · opciones en ${conOpc.length} preguntas`;
+  $('#infoReto').textContent = t;
+  const n = +$('#n').value || 1;
+  $('#peso').textContent = `Se descargarán unas ${n * 10} imágenes (≈ ${Math.round(n * 4)} MB). ` +
+    (n > 25 ? 'Con tantos exámenes la generación puede tardar varios minutos.' : 'Un examen tarda unos segundos.');
+}
+
+/* ---------- azar reproducible ---------- */
+function semillaNum(s) { let h = 1779033703 ^ s.length; for (let i = 0; i < s.length; i++) { h = Math.imul(h ^ s.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return h >>> 0; }
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* ---------- rutas ---------- */
+function base() { let b = $('#base').value.trim(); return b.endsWith('/') ? b : b + '/'; }
+function carpeta(r, q, a) {
+  const item = `${r.prefix}_PREGUNTA_${q}_ALEAT_${a}`;
+  if (r.layout === 'A') return `${r.prefix}_PREGUNTA${q}/`;
+  if (r.layout === 'B1') return `${r.root}/${r.prefix}_PREGUNTA${q}/`;
+  return `${r.root}/${r.prefix}_PREGUNTA${q}/${item}/`;
+}
+function rutaEnunciado(r, q, a) { return carpeta(r, q, a) + `${r.prefix}_PREGUNTA_${q}_ALEAT_${a}.json`; }
+function rutaGrafico(r, q, a) { return carpeta(r, q, a) + `${r.prefix}_PREGUNTA_${q}_ALEAT_${a}_grafico.json`; }
+function rutaOpcGrafico(r, q, a, i) { return carpeta(r, q, a) + `grafico_${i}.png`; }
+function rutaOpciones(r, q, a) { return carpeta(r, q, a) + `${r.prefix}_PREGUNTA_${q}_ALEAT_${a}.py`; }
+
+/* ---------- descarga con caché y límite de concurrencia ---------- */
+const cache = new Map();
+let enCurso = 0, cola = [];
+function turno() {
+  return new Promise(ok => { const t = () => { if (enCurso < 6) { enCurso++; ok(); } else cola.push(t); }; t(); });
+}
+function libera() { enCurso--; const t = cola.shift(); if (t) t(); }
+
+async function traer(ruta, tipo) {
+  const url = base() + encodeURI(ruta);
+  if (cache.has(url)) return cache.get(url);
+  await turno();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${res.status} en ${ruta}`);
+    const v = tipo === 'bin' ? await res.blob() : (await res.text()).trim();
+    cache.set(url, v);
+    return v;
+  } finally { libera(); }
+}
+
+function imagenDesde(src) {
+  return new Promise((ok, mal) => {
+    const im = new Image();
+    im.onload = () => ok(im);
+    im.onerror = () => mal(new Error('imagen ilegible'));
+    im.src = src;
+  });
+}
+const imagenB64 = b64 => imagenDesde('data:image/png;base64,' + b64);
+
+/* ---------- tratamiento de imagen ---------- */
+function aLienzo(im) {
+  const c = document.createElement('canvas');
+  c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  x.drawImage(im, 0, 0);
+  return c;
+}
+
+/** Recorta el margen decorativo. En las capturas de código busca la tarjeta
+ *  oscura; en los gráficos de matplotlib, el margen blanco. */
+function recortar(c) {
+  const x = c.getContext('2d', { willReadFrequently: true });
+  const d = x.getImageData(0, 0, c.width, c.height).data;
+  let oscuros = 0;
+  for (let i = 0; i < d.length; i += 4 * 37) if ((d[i] + d[i + 1] + d[i + 2]) / 3 < 110) oscuros++;
+  const total = Math.ceil(d.length / (4 * 37));
+  const modoTarjeta = oscuros / total > 0.05;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) {
+    for (let px = 0; px < c.width; px++) {
+      const i = (y * c.width + px) * 4;
+      const L = (d[i] + d[i + 1] + d[i + 2]) / 3;
+      const dentro = modoTarjeta ? L < 110 : L < 246;
+      if (dentro) { if (px < x0) x0 = px; if (px > x1) x1 = px; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+  }
+  if (x1 < 0 || (x1 - x0) < c.width * 0.1 || (y1 - y0) < c.height * 0.1) return c;
+  const p = Math.round(Math.min(c.width, c.height) * 0.012);
+  x0 = Math.max(0, x0 - p); y0 = Math.max(0, y0 - p);
+  x1 = Math.min(c.width - 1, x1 + p); y1 = Math.min(c.height - 1, y1 + p);
+  const o = document.createElement('canvas');
+  o.width = x1 - x0 + 1; o.height = y1 - y0 + 1;
+  o.getContext('2d').drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
+  return o;
+}
+
+/** Invierte la luminosidad conservando tono y saturación: fondo blanco, código oscuro. */
+function ahorrarTinta(c) {
+  const x = c.getContext('2d', { willReadFrequently: true });
+  const im = x.getImageData(0, 0, c.width, c.height), d = im.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), L = (mx + mn) / 2, dl = mx - mn;
+    if (dl < 0.004) { const v = Math.round((1 - L) * 255); d[i] = d[i + 1] = d[i + 2] = v; continue; }
+    const S = L < 0.5 ? dl / (mx + mn) : dl / (2 - mx - mn);
+    let H;
+    if (mx === r) H = ((g - b) / dl + 6) % 6; else if (mx === g) H = (b - r) / dl + 2; else H = (r - g) / dl + 4;
+    H /= 6;
+    const L2 = 1 - L, C = (1 - Math.abs(2 * L2 - 1)) * S, X = C * (1 - Math.abs((H * 6) % 2 - 1)), m = L2 - C / 2;
+    let rr, gg, bb; const s = Math.floor(H * 6) % 6;
+    if (s === 0) [rr, gg, bb] = [C, X, 0]; else if (s === 1) [rr, gg, bb] = [X, C, 0];
+    else if (s === 2) [rr, gg, bb] = [0, C, X]; else if (s === 3) [rr, gg, bb] = [0, X, C];
+    else if (s === 4) [rr, gg, bb] = [X, 0, C]; else [rr, gg, bb] = [C, 0, X];
+    d[i] = Math.round((rr + m) * 255); d[i + 1] = Math.round((gg + m) * 255); d[i + 2] = Math.round((bb + m) * 255);
+  }
+  x.putImageData(im, 0, 0);
+  return c;
+}
+
+function reducir(c, maxAncho) {
+  if (c.width <= maxAncho) return c;
+  const o = document.createElement('canvas');
+  o.width = maxAncho; o.height = Math.round(c.height * maxAncho / c.width);
+  const x = o.getContext('2d');
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(c, 0, 0, o.width, o.height);
+  return o;
+}
+
+/** Apila enunciado + gráfico(s) + opciones en una sola pieza. */
+function montar(partes, opciones) {
+  const W = Math.max(...partes.map(p => p.width));
+  const hueco = Math.round(W * 0.02);
+  const alturas = partes.map(p => Math.round(p.height * W / p.width));
+  const fuente = Math.max(13, Math.round(W * 0.019));
+  const lineas = opciones ? opciones.length : 0;
+  const altoTexto = lineas ? lineas * Math.round(fuente * 1.55) + hueco : 0;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = alturas.reduce((a, b) => a + b, 0) + hueco * (partes.length - 1) + altoTexto;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  let y = 0;
+  partes.forEach((p, i) => {
+    const h = alturas[i];
+    x.drawImage(p, 0, y, W, h);
+    y += h + hueco;
+  });
+  if (lineas) {
+    x.fillStyle = '#16202B';
+    x.font = `${fuente}px ui-monospace, Menlo, monospace`;
+    x.textBaseline = 'top';
+    opciones.forEach((t, i) => {
+      const et = String.fromCharCode(97 + i) + ')  ';
+      x.fillText(et + t, Math.round(W * .01), y + i * Math.round(fuente * 1.55));
+    });
+  }
+  return c;
+}
+
+/** Une los N gráficos-opción en una tira etiquetada a) b) c) d). */
+function tiraGraficos(ims) {
+  const cols = ims.length <= 2 ? ims.length : 2;
+  const filas = Math.ceil(ims.length / cols);
+  const w = Math.max(...ims.map(i => i.width));
+  const h = Math.max(...ims.map(i => Math.round(i.height * w / i.width)));
+  const et = Math.round(w * 0.07);
+  const c = document.createElement('canvas');
+  c.width = w * cols; c.height = (h + et) * filas;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  x.fillStyle = '#16202B'; x.textBaseline = 'top';
+  ims.forEach((im, i) => {
+    const cx = (i % cols) * w, cy = Math.floor(i / cols) * (h + et);
+    x.font = `600 ${Math.round(et * .78)}px Georgia, serif`;
+    x.fillText(String.fromCharCode(97 + i) + ')', cx + 4, cy + 2);
+    x.drawImage(im, cx, cy + et, w, h);
+  });
+  return c;
+}
+
+/* ---------- una pregunta ---------- */
+async function pregunta(r, q, a, ops) {
+  const b64 = await traer(rutaEnunciado(r, q, a));
+  let c = aLienzo(await imagenB64(b64));
+  if (ops.recortar) c = recortar(c);
+  const partes = [reducir(c, 1400)];
+  let textos = null;
+  const meta = r.preguntas[String(q)];
+  if (ops.extras) {
+    if (meta.graf) {
+      const g = await traer(rutaGrafico(r, q, a));
+      let gc = aLienzo(await imagenB64(g));
+      if (ops.recortar) gc = recortar(gc);
+      partes.push(reducir(gc, 1000));
+    }
+    if (meta.ngraf > 1) {
+      const ims = [];
+      for (let i = 1; i <= meta.ngraf; i++) {
+        const blob = await traer(rutaOpcGrafico(r, q, a, i), 'bin');
+        let gc = aLienzo(await imagenDesde(URL.createObjectURL(blob)));
+        if (ops.recortar) gc = recortar(gc);
+        ims.push(reducir(gc, 700));
+      }
+      partes.push(tiraGraficos(ims));
+    }
+    if (meta.py && ops.opcionesTexto) {
+      const py = await traer(rutaOpciones(r, q, a));
+      try {
+        const arr = JSON.parse(py.replace(/'/g, '"'));
+        if (Array.isArray(arr)) textos = arr.map(String);
+      } catch (e) { /* si no parsea, se ignora */ }
+    }
+  }
+  let final = partes.length > 1 || textos ? montar(partes, textos) : partes[0];
+  if (ops.tinta) final = ahorrarTinta(final);
+  return final;
+}
+
+/* ---------- reparto en columnas ---------- */
+function combinaciones(n, k) {
+  const res = [], act = [];
+  (function rec(inicio) {
+    if (act.length === k) { res.push(act.slice()); return; }
+    for (let i = inicio; i < n; i++) { act.push(i); rec(i + 1); act.pop(); }
+  })(1);
+  return res;
+}
+function repartir(ratios, C, W, H, hueco) {
+  const n = ratios.length;
+  if (C > n) return null;
+  const w = (W - (C - 1) * hueco) / C;
+  const alt = ratios.map(r => w / r);
+  let mejor = null;
+  for (const cortes of combinaciones(n, C - 1)) {
+    const idx = [0, ...cortes, n];
+    const cols = [];
+    for (let i = 0; i < C; i++) cols.push([...Array(idx[i + 1] - idx[i]).keys()].map(v => v + idx[i]));
+    if (cols.some(c => !c.length)) continue;
+    const mx = Math.max(...cols.map(c => c.reduce((s, j) => s + alt[j], 0) + hueco * (c.length - 1)));
+    if (!mejor || mx < mejor.mx) mejor = { mx, cols };
+  }
+  if (!mejor) return null;
+  const esc = Math.min(1, H / mejor.mx);
+  return { C, w, cols: mejor.cols, esc, efectivo: w * esc };
+}
+
+/* ---------- generación ---------- */
+const PAGINAS = { a4: [297, 210], a3: [420, 297], a4v: [210, 297] };
+
+function sorteo(r, nEx, sem, sinRepetir) {
+  const rnd = mulberry32(semillaNum(sem));
+  const qs = Object.keys(r.preguntas).map(Number).sort((a, b) => a - b);
+  const bolsas = {};
+  qs.forEach(q => {
+    const n = r.preguntas[String(q)].n;
+    const v = [...Array(n).keys()];
+    for (let i = v.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [v[i], v[j]] = [v[j], v[i]]; }
+    bolsas[q] = v;
+  });
+  const ex = [];
+  for (let e = 0; e < nEx; e++) {
+    ex.push(qs.map(q => sinRepetir ? bolsas[q][e % bolsas[q].length] : Math.floor(rnd() * r.preguntas[String(q)].n)));
+  }
+  return { qs, ex };
+}
+
+function estado(t) { $('#estado').textContent = t; }
+function progreso(v) { const b = $('#barra'); b.style.display = v === null ? 'none' : 'block'; if (v !== null) b.firstElementChild.style.width = (v * 100) + '%'; }
+
+async function componer(soloUna) {
+  const r = retos[sel.value];
+  const nEx = soloUna ? 1 : Math.max(1, Math.min(60, +$('#n').value || 1));
+  const ops = {
+    recortar: $('#recortar').checked, tinta: $('#tinta').checked,
+    extras: $('#extras').checked, opcionesTexto: $('#extras').checked
+  };
+  const dpi = +$('#dpi').value;
+  const [PW, PH] = PAGINAS[$('#formato').value];
+  const M = 10, HUECO = 4, CAB = 13;
+  const { qs, ex } = sorteo(r, nEx, $('#semilla').value || '0', $('#norep').checked);
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: PW > PH ? 'landscape' : 'portrait', unit: 'mm', format: $('#formato').value === 'a3' ? 'a3' : 'a4' });
+  let hechas = 0;
+  const totalImg = nEx * qs.length;
+  let previa = null;
+
+  for (let e = 0; e < nEx; e++) {
+    const piezas = [];
+    for (let i = 0; i < qs.length; i++) {
+      piezas.push(await pregunta(r, qs[i], ex[e][i], ops));
+      hechas++; progreso(hechas / totalImg);
+      estado(`Examen ${e + 1} de ${nEx} · pregunta ${i + 1} de ${qs.length}`);
+    }
+    const ratios = piezas.map(p => p.width / p.height);
+    const W = PW - 2 * M, H = PH - 2 * M - CAB;
+    let mejor = null;
+    for (let C = 2; C <= 5; C++) {
+      const p = repartir(ratios, C, W, H, HUECO);
+      if (p && (!mejor || p.efectivo > mejor.efectivo)) mejor = p;
+    }
+    if (e > 0) pdf.addPage();
+
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11);
+    pdf.text(`${$('#titulo').value} · ${sel.value.trim().replace(/_/g, ' ')}`, M, M + 3);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9);
+    pdf.text(`Examen ${String(e + 1).padStart(3, '0')}`, PW - M, M + 3, { align: 'right' });
+    pdf.setFontSize(9.5);
+    pdf.text('Nombre y apellidos: ______________________________________   DNI: ______________   Grupo: __________', M, M + 9);
+    pdf.setDrawColor(150); pdf.line(M, M + CAB - 2, PW - M, M + CAB - 2);
+    if ($('#clave').checked) {
+      pdf.setFontSize(6); pdf.setTextColor(140);
+      pdf.text('clave ' + ex[e].join('-'), PW - M, PH - 4, { align: 'right' });
+      pdf.setTextColor(0);
+    }
+
+    const w = mejor.w * mejor.esc, hueco = HUECO * mejor.esc;
+    let x = M;
+    for (const col of mejor.cols) {
+      let y = M + CAB;
+      for (const j of col) {
+        const h = w / ratios[j];
+        const px = Math.round(w / 25.4 * dpi);
+        const chico = reducir(piezas[j], px);
+        pdf.addImage(chico.toDataURL('image/jpeg', 0.9), 'JPEG', x, y, w, h);
+        y += h + hueco;
+      }
+      x += w + hueco;
+    }
+    if (e === 0) previa = { mejor, piezas, ratios, PW, PH, M, CAB, HUECO, ex: ex[0] };
+    if (soloUna) break;
+  }
+  progreso(null);
+  return { pdf, ex, qs, previa, nEx };
+}
+
+async function ejecutar(soloUna) {
+  $('#generar').disabled = $('#previsualizar').disabled = true;
+  try {
+    estado('Descargando…');
+    const res = await componer(soloUna);
+    dibujarPrevia(res.previa);
+    tablaClave(res.ex, res.qs);
+    if (!soloUna) {
+      const nom = `${sel.value.trim()}_${res.nEx}examenes.pdf`;
+      res.pdf.save(nom);
+      estado(`Listo: ${res.nEx} exámenes en ${nom}`);
+    } else {
+      estado('Hoja de muestra generada. El PDF completo se descarga con «Generar exámenes».');
+    }
+  } catch (err) {
+    console.error(err);
+    estado('Error: ' + err.message);
+    progreso(null);
+  } finally {
+    $('#generar').disabled = $('#previsualizar').disabled = false;
+  }
+}
+
+function dibujarPrevia(p) {
+  if (!p) return;
+  const esc = 3.2;
+  const c = $('#previa');
+  c.hidden = false; $('#vacio').style.display = 'none';
+  c.width = Math.round(p.PW * esc); c.height = Math.round(p.PH * esc);
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  const w = p.mejor.w * p.mejor.esc, hueco = p.HUECO * p.mejor.esc;
+  x.fillStyle = '#16202B'; x.font = `600 ${Math.round(3.6 * esc)}px Georgia, serif`;
+  x.fillText(sel.value.trim().replace(/_/g, ' ') + ' · Examen 001', p.M * esc, (p.M + 3) * esc);
+  x.font = `${Math.round(3 * esc)}px sans-serif`; x.fillStyle = '#5C6B78';
+  x.fillText('Nombre y apellidos: ____________________   DNI: __________   Grupo: ______', p.M * esc, (p.M + 9) * esc);
+  let cx = p.M * esc;
+  for (const col of p.mejor.cols) {
+    let cy = (p.M + p.CAB) * esc;
+    for (const j of col) {
+      const h = w / p.ratios[j];
+      x.drawImage(p.piezas[j], cx, cy, w * esc, h * esc);
+      cy += (h + hueco) * esc;
+    }
+    cx += (w + hueco) * esc;
+  }
+}
+
+function tablaClave(ex, qs) {
+  const filas = ex.map((v, i) => `<tr><td>${String(i + 1).padStart(3, '0')}</td>` + v.map(a => `<td>${a}</td>`).join('') + '</tr>').join('');
+  $('#claveBox').innerHTML = `<h2>Variaciones sorteadas</h2>
+    <p style="color:var(--suave);font-size:13.5px;margin:0">Qué versión de cada pregunta lleva cada examen. Guárdalo para corregir.</p>
+    <table><thead><tr><th>Examen</th>${qs.map(q => `<th>P${q}</th>`).join('')}</tr></thead><tbody>${filas}</tbody></table>
+    <div class="acciones"><button class="sec" id="csv">Descargar la clave en CSV</button></div>`;
+  $('#csv').onclick = () => {
+    const txt = ['examen,' + qs.map(q => 'P' + q).join(','),
+      ...ex.map((v, i) => [String(i + 1).padStart(3, '0'), ...v].join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv' }));
+    a.download = `${sel.value.trim()}_clave.csv`;
+    a.click();
+  };
+}
+
+$('#generar').onclick = () => ejecutar(false);
+$('#previsualizar').onclick = () => ejecutar(true);
+pintarInfo();
+</script>
+</body>
+</html>
