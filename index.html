@@ -63,7 +63,7 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:#F0EFE9;
 
 <header>
   <h1>Generador de retos</h1>
-  <p>Elige un reto y cuántos exámenes necesitas. Cada examen sale en una hoja A4 apaisada con las diez preguntas, sorteando una variación distinta de cada una.</p>
+  <p>Elige un reto y cuántos exámenes necesitas. Cada examen sale en una hoja A4 apaisada con las diez preguntas de una misma aleatorización, porque los enunciados de un reto están encadenados entre sí.</p>
 </header>
 
 <main>
@@ -96,7 +96,7 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:#F0EFE9;
     <label class="check"><input type="checkbox" id="recortar" checked><span>Recortar el fondo decorativo<small>Deja sólo la tarjeta de código: el texto sale hasta un 35 % más grande.</small></span></label>
     <label class="check"><input type="checkbox" id="tinta" checked><span>Modo ahorro de tinta<small>Invierte la luminosidad: fondo blanco y código oscuro, conservando los colores.</small></span></label>
     <label class="check"><input type="checkbox" id="extras" checked><span>Incluir gráficos y opciones<small>Sólo en los retos que los tienen; se montan bajo el enunciado.</small></span></label>
-    <label class="check"><input type="checkbox" id="norep" checked><span>No repetir variaciones entre exámenes</span></label>
+    <label class="check"><input type="checkbox" id="norep" checked><span>Una aleatorización distinta por examen<small>Sin esto, dos exámenes pueden salir idénticos.</small></span></label>
     <label class="check"><input type="checkbox" id="clave"><span>Imprimir la clave en la hoja</span></label>
   </fieldset>
 
@@ -152,13 +152,15 @@ function pintarInfo() {
   const nv = Math.min(...qs.map(q => q.n));
   const conGraf = Object.entries(r.preguntas).filter(([, q]) => q.graf || q.ngraf).map(([k]) => k);
   const conOpc = Object.entries(r.preguntas).filter(([, q]) => q.py).map(([k]) => k);
-  let t = `${qs.length} preguntas · ${nv} variaciones de cada una`;
+  let t = `${qs.length} preguntas · ${nv} aleatorizaciones completas disponibles`;
   if (conGraf.length) t += ` · gráfico en las preguntas ${conGraf.join(', ')}`;
   if (conOpc.length) t += ` · opciones en ${conOpc.length} preguntas`;
   $('#infoReto').textContent = t;
   const n = +$('#n').value || 1;
-  $('#peso').textContent = `Se descargarán unas ${n * 10} imágenes (≈ ${Math.round(n * 4)} MB). ` +
+  let aviso = `Se descargarán unas ${n * 10} imágenes (≈ ${Math.round(n * 4)} MB). ` +
     (n > 25 ? 'Con tantos exámenes la generación puede tardar varios minutos.' : 'Un examen tarda unos segundos.');
+  if (n > nv) aviso += ` Sólo hay ${nv} aleatorizaciones: a partir del examen ${nv + 1} se repiten.`;
+  $('#peso').textContent = aviso;
 }
 
 /* ---------- azar reproducible ---------- */
@@ -401,21 +403,19 @@ function repartir(ratios, C, W, H, hueco) {
 /* ---------- generación ---------- */
 const PAGINAS = { a4: [297, 210], a3: [420, 297], a4v: [210, 297] };
 
+/* Una sola aleatorizacion por examen: las diez preguntas comparten indice,
+   porque los enunciados de un mismo ALEAT estan encadenados entre si. */
 function sorteo(r, nEx, sem, sinRepetir) {
   const rnd = mulberry32(semillaNum(sem));
   const qs = Object.keys(r.preguntas).map(Number).sort((a, b) => a - b);
-  const bolsas = {};
-  qs.forEach(q => {
-    const n = r.preguntas[String(q)].n;
-    const v = [...Array(n).keys()];
-    for (let i = v.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [v[i], v[j]] = [v[j], v[i]]; }
-    bolsas[q] = v;
-  });
-  const ex = [];
+  const n = Math.min(...qs.map(q => r.preguntas[String(q)].n));
+  const bolsa = [...Array(n).keys()];
+  for (let i = bolsa.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [bolsa[i], bolsa[j]] = [bolsa[j], bolsa[i]]; }
+  const variantes = [];
   for (let e = 0; e < nEx; e++) {
-    ex.push(qs.map(q => sinRepetir ? bolsas[q][e % bolsas[q].length] : Math.floor(rnd() * r.preguntas[String(q)].n)));
+    variantes.push(sinRepetir ? bolsa[e % n] : Math.floor(rnd() * n));
   }
-  return { qs, ex };
+  return { qs, variantes, ex: variantes.map(v => qs.map(() => v)) };
 }
 
 function estado(t) { $('#estado').textContent = t; }
@@ -431,7 +431,7 @@ async function componer(soloUna) {
   const dpi = +$('#dpi').value;
   const [PW, PH] = PAGINAS[$('#formato').value];
   const M = 10, HUECO = 4, CAB = 13;
-  const { qs, ex } = sorteo(r, nEx, $('#semilla').value || '0', $('#norep').checked);
+  const { qs, variantes, ex } = sorteo(r, nEx, $('#semilla').value || '0', $('#norep').checked);
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ orientation: PW > PH ? 'landscape' : 'portrait', unit: 'mm', format: $('#formato').value === 'a3' ? 'a3' : 'a4' });
@@ -458,13 +458,13 @@ async function componer(soloUna) {
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11);
     pdf.text(`${$('#titulo').value} · ${sel.value.trim().replace(/_/g, ' ')}`, M, M + 3);
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9);
-    pdf.text(`Examen ${String(e + 1).padStart(3, '0')}`, PW - M, M + 3, { align: 'right' });
+    pdf.text(`Examen ${String(e + 1).padStart(3, '0')} · variación ${variantes[e]}`, PW - M, M + 3, { align: 'right' });
     pdf.setFontSize(9.5);
     pdf.text('Nombre y apellidos: ______________________________________   DNI: ______________   Grupo: __________', M, M + 9);
     pdf.setDrawColor(150); pdf.line(M, M + CAB - 2, PW - M, M + CAB - 2);
     if ($('#clave').checked) {
       pdf.setFontSize(6); pdf.setTextColor(140);
-      pdf.text('clave ' + ex[e].join('-'), PW - M, PH - 4, { align: 'right' });
+      pdf.text('variación ' + variantes[e], PW - M, PH - 4, { align: 'right' });
       pdf.setTextColor(0);
     }
 
@@ -481,11 +481,11 @@ async function componer(soloUna) {
       }
       x += w + hueco;
     }
-    if (e === 0) previa = { mejor, piezas, ratios, PW, PH, M, CAB, HUECO, ex: ex[0] };
+    if (e === 0) previa = { mejor, piezas, ratios, PW, PH, M, CAB, HUECO, variante: variantes[0] };
     if (soloUna) break;
   }
   progreso(null);
-  return { pdf, ex, qs, previa, nEx };
+  return { pdf, variantes, qs, previa, nEx };
 }
 
 async function ejecutar(soloUna) {
@@ -494,7 +494,7 @@ async function ejecutar(soloUna) {
     estado('Descargando…');
     const res = await componer(soloUna);
     dibujarPrevia(res.previa);
-    tablaClave(res.ex, res.qs);
+    tablaClave(res.variantes);
     if (!soloUna) {
       const nom = `${sel.value.trim()}_${res.nEx}examenes.pdf`;
       res.pdf.save(nom);
@@ -521,7 +521,7 @@ function dibujarPrevia(p) {
   x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
   const w = p.mejor.w * p.mejor.esc, hueco = p.HUECO * p.mejor.esc;
   x.fillStyle = '#16202B'; x.font = `600 ${Math.round(3.6 * esc)}px Georgia, serif`;
-  x.fillText(sel.value.trim().replace(/_/g, ' ') + ' · Examen 001', p.M * esc, (p.M + 3) * esc);
+  x.fillText(sel.value.trim().replace(/_/g, ' ') + ' · Examen 001 · variación ' + p.variante, p.M * esc, (p.M + 3) * esc);
   x.font = `${Math.round(3 * esc)}px sans-serif`; x.fillStyle = '#5C6B78';
   x.fillText('Nombre y apellidos: ____________________   DNI: __________   Grupo: ______', p.M * esc, (p.M + 9) * esc);
   let cx = p.M * esc;
@@ -536,15 +536,16 @@ function dibujarPrevia(p) {
   }
 }
 
-function tablaClave(ex, qs) {
-  const filas = ex.map((v, i) => `<tr><td>${String(i + 1).padStart(3, '0')}</td>` + v.map(a => `<td>${a}</td>`).join('') + '</tr>').join('');
-  $('#claveBox').innerHTML = `<h2>Variaciones sorteadas</h2>
-    <p style="color:var(--suave);font-size:13.5px;margin:0">Qué versión de cada pregunta lleva cada examen. Guárdalo para corregir.</p>
-    <table><thead><tr><th>Examen</th>${qs.map(q => `<th>P${q}</th>`).join('')}</tr></thead><tbody>${filas}</tbody></table>
+function tablaClave(variantes) {
+  const filas = variantes.map((v, i) =>
+    `<tr><td>${String(i + 1).padStart(3, '0')}</td><td>${v}</td></tr>`).join('');
+  $('#claveBox').innerHTML = `<h2>Variación de cada examen</h2>
+    <p style="color:var(--suave);font-size:13.5px;margin:0">Las diez preguntas de un examen salen de la misma aleatorización. Guárdalo para corregir.</p>
+    <table><thead><tr><th>Examen</th><th>Variación</th></tr></thead><tbody>${filas}</tbody></table>
     <div class="acciones"><button class="sec" id="csv">Descargar la clave en CSV</button></div>`;
   $('#csv').onclick = () => {
-    const txt = ['examen,' + qs.map(q => 'P' + q).join(','),
-      ...ex.map((v, i) => [String(i + 1).padStart(3, '0'), ...v].join(','))].join('\n');
+    const txt = ['examen,variacion',
+      ...variantes.map((v, i) => [String(i + 1).padStart(3, '0'), v].join(','))].join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv' }));
     a.download = `${sel.value.trim()}_clave.csv`;
